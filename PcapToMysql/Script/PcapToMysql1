@@ -6,20 +6,22 @@ import dpkt
 import os
 import socket
 import struct
-#from autotest.configure import filepath
 
-tcp_or_udp ={}
+# from autotest.configure import filepath
+
+tcp_or_udp = {}
 tcp_or_udp[6] = 'tcp'
 tcp_or_udp[17] = 'udp'
 tcp_or_udp[1] = 'icmp'
 tcp_or_udp[2] = 'igmp'
 
+
 def parseRadius(filepath):
-    fpcap = open(filepath,'rb')
+    fpcap = open(filepath, 'rb')
     source_pcap_name = os.path.basename(filepath).split('.')[0]
     string_data = fpcap.read()
-    print (len(string_data))
-    #pcap文件包头解析
+    print(len(string_data))
+    # pcap文件包头解析
     pcap_header = {}
     pcap_header['magic_number'] = string_data[0:4]
     pcap_header['version_major'] = string_data[4:6]
@@ -29,83 +31,89 @@ def parseRadius(filepath):
     pcap_header['snaplen'] = string_data[16:20]
     pcap_header['linktype'] = string_data[20:24]
 
-    #pcap头部长度 24字节    
+    # pcap头部长度 24字节
     pcap_header_str = string_data[:24]
-    print (pcap_header_str)
-    
-    #pcap文件的数据包解析
+    print(pcap_header_str)
+
+    # pcap文件的数据包解析
     packet_num = 0
     packet_data = []
-    
-    pcap_packet_header = {}
-    i =24
-    
-    write_pcap = {}
-    
-    while(i<len(string_data)):
-         
-        #数据包头各个字段
-        pcap_packet_header['GMTtime'] = string_data[i:i+4]
-        pcap_packet_header['MicroTime'] = string_data[i+4:i+8]
-        pcap_packet_header['caplen'] = string_data[i+8:i+12]
-        pcap_packet_header['len'] = string_data[i+12:i+16]
-        #求出此包的包长len
-        packet_len = struct.unpack('I',pcap_packet_header['len'])[0]
-        #写入此包数据
-        packet_data = ''
-        packet_data = string_data[i+16:i+16+packet_len]
-        
-        #pcap_packet头部长度
-        pcap_packet_header_str = ''
-        pcap_packet_header_str += pcap_packet_header['GMTtime']
-        pcap_packet_header_str += pcap_packet_header['MicroTime']
-        pcap_packet_header_str += pcap_packet_header['caplen']
-        pcap_packet_header_str += pcap_packet_header['len']
-        print (len(packet_data))
-        #数据部分以太帧读取
-        ether = dpkt.ethernet.Ethernet(packet_data)
-        #判断为传输层为ip
-        if ether.type == dpkt.ethernet.ETH_TYPE_IP:
-            ip = ether.data                 #ip数据包
-            src = socket.inet_ntoa(ip.src)  #源ip
-            dst = socket.inet_ntoa(ip.dst)  #目的ip
-            #传输层数据
-            data = ip.data
-            ip_pro =  tcp_or_udp[ip.p]
 
-            #传输层为tcp 或者 udp 协议
+    pcap_packet_header = {}
+    i = 24
+
+    write_pcap = {}
+
+    while (i < len(string_data)):
+
+        # 数据包头各个字段
+        pcap_packet_header['GMTtime'] = string_data[i:i + 4]
+        pcap_packet_header['MicroTime'] = string_data[i + 4:i + 8]
+        pcap_packet_header['caplen'] = string_data[i + 8:i + 12]
+        pcap_packet_header['len'] = string_data[i + 12:i + 16]
+        # 求出此包的包长len
+
+        packet_len=int.from_bytes(pcap_packet_header['len'],byteorder='big',signed=False)
+        #packet_len = struct.unpack('I', pcap_packet_header['len'])[0]
+        # 写入此包数据
+        packet_data = ''
+        packet_data = string_data[i + 16:i + 16 + packet_len]
+
+        # pcap_packet头部长度
+        pcap_packet_header_str = ''
+        pcap_packet_header_str += str(pcap_packet_header['GMTtime'])
+        print("GMTtime：" + str(int.from_bytes(pcap_packet_header['GMTtime'],byteorder='big',signed=False)))
+        pcap_packet_header_str += str(pcap_packet_header['MicroTime'])
+        print("MicroTime：" + str(int.from_bytes(pcap_packet_header['MicroTime'], byteorder='big', signed=False)))
+        pcap_packet_header_str += str(pcap_packet_header['caplen'])
+        print("caplen：" + str(int.from_bytes(pcap_packet_header['caplen'], byteorder='big', signed=False)))
+        pcap_packet_header_str += str(pcap_packet_header['len'])
+        print("packet_data的长度："+str(len(packet_data)))
+        # 数据部分以太帧读取
+        ether = dpkt.ethernet.Ethernet(packet_data)
+        # 判断为传输层为ip
+        if ether.type == dpkt.ethernet.ETH_TYPE_IP:
+            ip = ether.data  # ip数据包
+            src = socket.inet_ntoa(ip.src)  # 源ip
+            dst = socket.inet_ntoa(ip.dst)  # 目的ip
+            # 传输层数据
+            data = ip.data
+            ip_pro = tcp_or_udp[ip.p]
+
+            # 传输层为tcp 或者 udp 协议
             if isinstance(data, dpkt.tcp.TCP) or isinstance(data, dpkt.udp.UDP):
                 dport = str(data.dport)
                 sport = str(data.sport)
-                
+
                 contents = data.data
-                accouting_code = struct.unpack('B',contents[0:1])[0]
-                packet_identifier = struct.unpack('B',contents[1:2])[0]
-                length = struct.unpack('!H',contents[2:4])[0]
-                authenticator = repr(struct.unpack('>16s',contents[4:20])[0])
-                print ("*"*40)
-                print ('accouting_code ',accouting_code)
-                print ('packet_identifier ',packet_identifier)
-                print ('length ',length)
-                print ('authenticator ',len(authenticator))
-                print 
+                accouting_code = struct.unpack('B', contents[0:1])[0]
+                packet_identifier = struct.unpack('B', contents[1:2])[0]
+                length = struct.unpack('!H', contents[2:4])[0]
+                authenticator = repr(struct.unpack('>16s', contents[4:20])[0])
+                print("*" * 40)
+                print('accouting_code ', accouting_code)
+                print('packet_identifier ', packet_identifier)
+                print('length ', length)
+                print('authenticator ', len(authenticator))
+                print
                 if accouting_code == 4:
                     step = 0
-                    while len(contents[20+step:]) > 0:
-                        l_user_name = struct.unpack('B',contents[20+step+1:20+step+2])[0]
-                        print ('l_user_name: ', l_user_name)
-                        t_user_name = struct.unpack('B',contents[20+step:20+step+1])[0]
-                        l_str = '{0}s'.format(str(l_user_name-2))
-                        v_user_name = struct.unpack(l_str,contents[20+step+2:20+step+l_user_name])[0]
-                        print ('v_user_name: ',v_user_name)
-                        print ('t_user_name: ',t_user_name)
+                    while len(contents[20 + step:]) > 0:
+                        l_user_name = struct.unpack('B', contents[20 + step + 1:20 + step + 2])[0]
+                        print('l_user_name: ', l_user_name)
+                        t_user_name = struct.unpack('B', contents[20 + step:20 + step + 1])[0]
+                        l_str = '{0}s'.format(str(l_user_name - 2))
+                        v_user_name = struct.unpack(l_str, contents[20 + step + 2:20 + step + l_user_name])[0]
+                        print('v_user_name: ', v_user_name)
+                        print('t_user_name: ', t_user_name)
                         step = step + l_user_name
-        
-        i = i+ packet_len+16
 
-        packet_num+=1
+        i = i + packet_len + 16
+
+        packet_num += 1
+
 
 if __name__ == '__main__':
-    filepath = './test.pcap'  #pcap包的位置
-    
+    filepath = 'D:\\test2\\test.pcap'  # pcap包的位置
+
     parseRadius(filepath)
