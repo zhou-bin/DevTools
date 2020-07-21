@@ -1,0 +1,163 @@
+#!/usr/bin/env python
+# coding: utf-8
+import re
+
+import dpkt
+import os
+import socket
+import struct
+
+import pymysql
+
+tcp_or_udp = {}
+tcp_or_udp[6] = 'tcp'
+tcp_or_udp[17] = 'udp'
+tcp_or_udp[1] = 'icmp'
+tcp_or_udp[2] = 'igmp'
+
+
+def table_exists(con,table_name) :#这个函数用来判断表是否存在
+    sql = "show tables;"
+    con.execute(sql)
+    tables = [con.fetchall()]
+    table_list = re.findall('(\'.*?\')',str(tables))
+    table_list = [re.sub("'",'',each) for each in table_list]
+    if table_name in table_list:
+        return 1;#存在返回1
+    else:
+        return 0;#不存在返回0
+
+
+
+def parseRadius(filepath,tableName,uuid):
+  #print("start")
+  fpcap = open(filepath, 'rb')
+  source_pcap_name = os.path.basename(filepath).split('.')[0]
+  string_data = fpcap.read()
+  #print("string_data.len")
+  #print(len(string_data))
+
+  # pcap文件包头解析
+  pcap_header = {}
+  pcap_header['magic_number'] = string_data[0:4]
+  pcap_header['version_major'] = string_data[4:6]
+  pcap_header['version_minor'] = string_data[6:8]
+  pcap_header['thiszone'] = string_data[8:12]
+  pcap_header['sigfigs'] = string_data[12:16]
+  pcap_header['snaplen'] = string_data[16:20]
+  pcap_header['linktype'] = string_data[20:24]
+
+  # pcap头部长度 24字节
+  pcap_header_str = string_data[:24]
+  #print("pcap_header_str:")
+  #print(pcap_header_str)
+
+
+  # pcap文件的数据包解析
+  packet_num = 0
+  packet_data = []
+
+  pcap_packet_header = {}
+  i = 24
+
+
+  GMTtime=""
+  MicroTime=""
+  dst=""
+  src=""
+  protocol=""
+  dport=""
+  sport=""
+  while (i < len(string_data)):
+
+    # 数据包头各个字段
+    pcap_packet_header['GMTtime'] = string_data[i:i + 4]
+    print("高位时间戳：")
+    print(int.from_bytes(pcap_packet_header['GMTtime'],byteorder='little',signed=False))
+    GMTtime=int.from_bytes(pcap_packet_header['GMTtime'],byteorder='little',signed=False);
+    pcap_packet_header['MicroTime'] = string_data[i + 4:i + 8]
+    print("低位时间戳：")
+    # int.from_bytes(pcap_packet_header['len'],byteorder='little',signed=False)
+    print(int.from_bytes(pcap_packet_header['MicroTime'], byteorder='little', signed=False))
+    MicroTime=int.from_bytes(pcap_packet_header['MicroTime'], byteorder='little', signed=False)
+    pcap_packet_header['caplen'] = string_data[i + 8:i + 12]
+    pcap_packet_header['len'] = string_data[i + 12:i + 16]
+    # 求出此包的包长len
+    packet_len = struct.unpack('I', pcap_packet_header['len'])[0]
+    # 写入此包数据
+    packet_data = ''
+    packet_data = string_data[i + 16:i + 16 + packet_len]
+
+    # 数据部分以太帧读取
+    ether = dpkt.ethernet.Ethernet(packet_data)
+    # 判断为传输层为ip
+    if ether.type == dpkt.ethernet.ETH_TYPE_IP:
+      ip = ether.data  # ip数据包
+      src = socket.inet_ntoa(ip.src)  # 源ip
+      dst = socket.inet_ntoa(ip.dst)  # 目的ip
+      print("*"*40)
+      print("dst=" + str(dst))
+      dst= str(dst)
+      print("src=" + str(src))
+      src=str(src)
+      # 传输层数据
+      data = ip.data
+      ip_pro = tcp_or_udp[ip.p]
+      print("协议："+str(ip_pro))
+      protocol=str(ip_pro)
+      # 传输层为tcp 或者 udp 协议
+      if isinstance(data, dpkt.tcp.TCP) or isinstance(data, dpkt.udp.UDP):
+        dport = str(data.dport)
+        print("目的端口号：" + str(dport))
+        sport = str(data.sport)
+        print("源端口号：" + str(sport))
+
+    #插入
+    sql="INSERT INTO`"+tableName+"`(`create_time`,`uuid`,`high_time_stamp`,`low_time_stamp`,`destination_address`,"+"`source_address`,`protocol`,`destination_port`,`source_port`)"+"value(now(),"+str(uuid)+",\""+str(GMTtime)+"\",\""+str(MicroTime)+"\",\""+dst+"\",\""+src+"\",\""+protocol+"\",\""+str(dport)+"\",\""+str(sport)+"\")"
+    print(sql)
+    cursor.execute(sql)
+    db.commit()
+    #
+
+    i = i + packet_len + 16
+    packet_num += 1;
+
+  print("总共包数："+str(packet_num))
+
+
+if __name__ == '__main__':
+    dirPath = 'D:\\test2\\'
+    database = "ximenzi"
+    uuid=123
+    # 打开数据库连接
+    db = pymysql.connect(host="localhost", user="root", password="123456", database="ximenzi", charset='utf8')
+    # 使用cursor()方法获取操作游标
+    cursor = db.cursor()
+    for i, j, k in os.walk(dirPath):
+        for m in k:
+            filePath = dirPath + m
+            print(m.split(".")[0])
+            tableName = m.split(".")[0]
+            cursor.execute('use ' + database)
+
+            if (table_exists(cursor, tableName) == 1):
+                print("表已经存在")
+                break
+            sql = """CREATE TABLE `""" + tableName + """` (
+                             `id`  bigint NOT NULL AUTO_INCREMENT,
+                             `create_time`   datetime,
+                             `uuid` int, 
+                              `high_time_stamp` varchar(20),
+                              `low_time_stamp` varchar(20),
+                              `destination_address` varchar(20),
+                              `source_address` varchar(20),
+                              `protocol` varchar(20) ,
+                              `destination_port` varchar(20) ,
+                              `source_port` varchar(20),PRIMARY KEY(`id`))"""
+            print(sql)
+            cursor.execute(sql)
+            db.commit()
+            parseRadius(filePath,tableName,uuid)
+            db.close()
+
+
