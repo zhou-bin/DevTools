@@ -2,16 +2,13 @@ import os
 import json
 import pymysql
 import re
+import datetime
 
-#输入文件所在的文件夹
-from pandas.io.sql import table_exists
-
-
-dirPath = 'D:\\test\\'
+dirPath = 'c:\\test\\'
 database="ximenzi"
 UUID="123"
-
-
+num=80
+starttime = datetime.datetime.now()
 def table_exists(con,table_name) :#这个函数用来判断表是否存在
     sql = "show tables;"
     con.execute(sql)
@@ -25,7 +22,10 @@ def table_exists(con,table_name) :#这个函数用来判断表是否存在
 
 key_list = []
 get_keys=[]
+all_keys=[]
+key_set=set();
 def get_dict_allkeys(dict_a):
+    key_list.clear()
     """
     遍历嵌套字典，获取json返回结果的所有key值
     :param dict_a:
@@ -54,8 +54,13 @@ def get_dict_allkeys(dict_a):
 db = pymysql.connect(host="localhost", user="root",password="123456",database="ximenzi",charset='utf8')
 # 使用cursor()方法获取操作游标
 cursor = db.cursor()
-
-
+sql="select COLUMN_NAME from information_schema.COLUMNS where table_name = 'demo';"
+cursor.execute(sql)
+results = cursor.fetchall()
+for row in results:
+    if row[0]!="id" :
+        all_keys.append(row[0])
+n=0
 for i,j,k in os.walk(dirPath):
     for m in k:
         filePath=dirPath+m
@@ -63,10 +68,23 @@ for i,j,k in os.walk(dirPath):
         print(m.split(".")[0])
         tableName=m.split(".")[0]
         cursor.execute('use '+database)
-
         if (table_exists(cursor, tableName) != 1):
             print("表不存在")
             break
+        #拼接sql
+        sql = """INSERT INTO `""" + tableName + """`("""
+        sql2= " VALUES(now()"
+        for i in all_keys:
+            sql += "`" + str(i) + "`,"
+            if i != "create_time":
+                sql2+=",%s"
+        sql=sql[:-1]
+        sql+=")"
+        sql2+=")"
+        sql=sql+sql2
+        res=[]
+        num_label=0
+        #拼接sql结束
         while True :
             lines = fo.readline()
             if not lines:
@@ -74,35 +92,32 @@ for i,j,k in os.walk(dirPath):
             if lines=="\n":
                 continue
             #print(lines,end="")
+            n=n+1
+            if n%10000==0:
+                print("当前第"+str(n))
             data = json.loads(lines)#字符串转json
             #print(str(data))
-            get_keys.clear()
-            get_keys = get_dict_allkeys(data)#从json取出key
-            sql=""
-            for i in get_keys:
-                # 开始创建MySQL表
-                sql = """INSERT INTO `"""+tableName+"""`(`create_time`,`UUID`"""
-                for i in get_keys:
-                    sql += ",`" + str(i) + "`"
-                sql += ") VALUES("
-                sql += "now(),"+UUID+",";
-                for i in get_keys:
-                    sql += "\"" + str(data[i]) + "\","
-                sql=sql[:-1]
-                sql += ")"
-            print(sql)
-            try:
-                # 执行sql语句
-                cursor.execute(sql)
-                # 提交到数据库执行
+            col=[]
+            for i in all_keys:
+                if i in data:
+                    col.append(str(data[i]))
+                else:
+                    if i=="uuid":
+                        col.append(UUID)
+                    elif i!="create_time":
+                        col.append("")
+            res.append(tuple(col))
+            num_label=num_label+1
+            if num_label==num:
+                cursor.executemany(sql, res)
                 db.commit()
-            except:
-                # 如果发生错误则回滚
-                db.rollback()
-                print("failed")
+                res.clear()
+                num_label=0;
+        if(num_label!=num):
+            cursor.executemany(sql, res)
+            db.commit()
 
-
-            # 结束创建MySQL表
-        # 关闭数据库连接
         db.close()
         print(str(tableName)+"插入成功")
+endtime = datetime.datetime.now()
+print(endtime - starttime)
