@@ -35,7 +35,7 @@ def parseRadius(filepath,tableName,uuid):
     string_data=fpcap.read(16)
     packet_num=0
     sql = "INSERT INTO`" + tableName + "`(`create_time`,`uuid`,`high_time_stamp`,`low_time_stamp`,`destination_address`," \
-          + "`source_address`,`protocol`,`destination_port`,`source_port`)" + "value(now(),"+str(uuid)+",%s,%s,%s,%s,%s,%s,%s)"
+          + "`source_address`,`protocol`,`destination_port`,`source_port`,`seq`,`ack`,`sum`,`flag`,`offset`)" + "value(now(),"+str(uuid)+",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
     res=[]
 
     num_sql=0
@@ -87,15 +87,36 @@ def parseRadius(filepath,tableName,uuid):
             if str(ip_pro)=="icmp":
                 col.append("")
                 col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
             # 传输层为tcp 或者 udp 协议
-            if isinstance(data, dpkt.tcp.TCP) or isinstance(data, dpkt.udp.UDP):
+            if isinstance(data, dpkt.tcp.TCP):
                 dport = str(data.dport)
                 col.append(str(data.dport))
                 # print("目的端口号：" + str(dport))
                 sport = str(data.sport)
                 col.append(str(data.sport))
                 # print("源端口号：" + str(sport))
-                # 插入
+                col.append(str(data.seq))#序列号
+                col.append(str(data.ack))  #确认号
+                col.append(str(data.sum)) #校验和
+                col.append(str(data.flags))  # flags
+                col.append(str(data._off))  # 偏移量
+            if isinstance(data, dpkt.udp.UDP):
+                dport = str(data.dport)
+                col.append(str(data.dport))
+                # print("目的端口号：" + str(dport))
+                sport = str(data.sport)
+                col.append(str(data.sport))
+                # print("源端口号：" + str(sport))
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
             packet_num += 1;
             if packet_num%10000==0:
                 print("已经插入"+str(packet_num))
@@ -117,7 +138,7 @@ def parseRadius(filepath,tableName,uuid):
 
 
 if __name__ == '__main__':
-    dirPath = 'c:\\test3\\'
+    dirPath = 'd:\\test\\'
     database = "ximenzi"
     uuid=123
     # 打开数据库连接
@@ -142,6 +163,11 @@ if __name__ == '__main__':
                               `destination_address` varchar(20),
                               `source_address` varchar(20),
                               `protocol` varchar(20) ,
+                              `seq` varchar(20) ,
+                              `ack` varchar(20) ,
+                              `sum` varchar(20) ,
+                              `flag` varchar(20) ,
+                              `offset` varchar(20) ,
                               `destination_port` varchar(20) ,
                               `source_port` varchar(20),PRIMARY KEY(`id`))"""
             #print(sql)
