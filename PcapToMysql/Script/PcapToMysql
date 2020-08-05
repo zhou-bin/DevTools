@@ -27,8 +27,6 @@ def table_exists(con,table_name) :#这个函数用来判断表是否存在
     else:
         return 0;#不存在返回0
 
-
-
 def parseRadius(filepath,tableName,uuid):
     fpcap = open(filepath, 'rb')
     fpcap.seek(24, 0)
