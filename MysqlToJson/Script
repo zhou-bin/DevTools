@@ -1,0 +1,41 @@
+import os
+import json
+import pymysql
+import datetime
+
+dirPath = 'D:\\test\\'  #输出的文件位置
+database="ximenzi"
+table_name=''   #为空，则便利该数据库的所有表;不为空便利指定的表
+ip_address='localhost'
+user_name='root'
+password='123456'
+starttime = datetime.datetime.now()
+# 打开数据库连接
+db = pymysql.connect(host=ip_address, user=user_name,password=password,database=database,charset='utf8')
+# 使用cursor()方法获取操作游标
+cursor = db.cursor()
+if table_name=='':
+    sql = "show tables"
+    cursor.execute(sql)
+    results = cursor.fetchall()
+    for row in results:
+        table_name=row[0]
+        keys = []
+        print(table_name)
+        sql='select COLUMN_NAME from information_schema.COLUMNS where table_name = \"'+table_name+"\" ;"
+        cursor.execute(sql)
+        results = cursor.fetchall()
+        for i in results:
+            if str(i[0])!='id' and str(i[0])!='create_time' and str(i[0])!='uuid':
+                keys.append(i[0])
+        print(keys)
+        
+        #sql="select * from `"+table_name+"` limit 100;"
+        #cursor.execute(sql)
+        #results = cursor.fetchall()
+        #print(results)
+else:
+    print(table_name)
+
+endtime = datetime.datetime.now()
+print(endtime - starttime)
