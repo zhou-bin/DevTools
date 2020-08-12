@@ -5,11 +5,13 @@ import datetime
 
 dirPath = 'D:\\test\\'  #输出的文件位置
 database="ximenzi"
-table_name=''   #为空，则便利该数据库的所有表;不为空便利指定的表
+table_name='demo3'   #为空，则便利该数据库的所有表;不为空便利指定的表
 ip_address='localhost'
 user_name='root'
 password='123456'
 starttime = datetime.datetime.now()
+num=0;
+all=0;
 # 打开数据库连接
 db = pymysql.connect(host=ip_address, user=user_name,password=password,database=database,charset='utf8')
 # 使用cursor()方法获取操作游标
@@ -19,23 +21,71 @@ if table_name=='':
     cursor.execute(sql)
     results = cursor.fetchall()
     for row in results:
+        all=0
+        num=0
         table_name=row[0]
         keys = []
-        print(table_name)
+        filename = dirPath+table_name+'.txt'
+        sql="select count(*) from "+table_name+" ;"
+        cursor.execute(sql)
+        results = cursor.fetchall()
+        all=results[0][0]
         sql='select COLUMN_NAME from information_schema.COLUMNS where table_name = \"'+table_name+"\" ;"
         cursor.execute(sql)
         results = cursor.fetchall()
         for i in results:
             if str(i[0])!='id' and str(i[0])!='create_time' and str(i[0])!='uuid':
                 keys.append(i[0])
-        print(keys)
-        
-        #sql="select * from `"+table_name+"` limit 100;"
-        #cursor.execute(sql)
-        #results = cursor.fetchall()
-        #print(results)
+        sql_param=''
+        while num<all :
+            for i in keys:
+                sql_param = sql_param + " `" + i + "` ,"
+            sql_param = sql_param[:-1]
+            sql = "select " + sql_param + " from `" + table_name + "` limit 1 offset " + str(num)
+            num = num + 1;
+            cursor.execute(sql)
+            results = cursor.fetchall()
+            # print(results[0])
+            dictionary = dict(zip(keys, results[0]))
+            j = json.dumps(dictionary)
+            with open(filename, 'a') as f:  # 如果filename不存在会自动创建， 'a'表示增加数据！
+                f.write(j + '\n')
+            f.close()
 else:
-    print(table_name)
+    sql = "SELECT table_name FROM information_schema.TABLES WHERE table_name =\""+table_name+"\""
+    cursor.execute(sql)
+    results = cursor.fetchall()
+    for row in results:
+        all = 0
+        num = 0
+        table_name = row[0]
+        keys = []
+        filename = dirPath + table_name + '.txt'
+        sql = "select count(*) from " + table_name + " ;"
+        cursor.execute(sql)
+        results = cursor.fetchall()
+        all = results[0][0]
+        sql = 'select COLUMN_NAME from information_schema.COLUMNS where table_name = \"' + table_name + "\" ;"
+        cursor.execute(sql)
+        results = cursor.fetchall()
+        for i in results:
+            if str(i[0]) != 'id' and str(i[0]) != 'create_time' and str(i[0]) != 'uuid':
+                keys.append(i[0])
+        sql_param = ''
+        while num < all:
+            for i in keys:
+                sql_param = sql_param + " `" + i + "` ,"
+            sql_param = sql_param[:-1]
+            sql = "select " + sql_param + " from `" + table_name + "` limit 1 offset " + str(num)
+            num = num + 1;
+            cursor.execute(sql)
+            results = cursor.fetchall()
+            # print(results[0])
+            dictionary = dict(zip(keys, results[0]))
+            j = json.dumps(dictionary)
+            with open(filename, 'a') as f:  # 如果filename不存在会自动创建， 'a'表示增加数据！
+                f.write(j + '\n')
+            f.close()
 
 endtime = datetime.datetime.now()
 print(endtime - starttime)
