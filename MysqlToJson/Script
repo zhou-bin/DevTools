@@ -10,6 +10,7 @@ ip_address='localhost'
 user_name='root'
 password='123456'
 starttime = datetime.datetime.now()
+one_time_num=100;
 num=0;
 all=0;
 # 打开数据库连接
@@ -41,8 +42,8 @@ if table_name=='':
             for i in keys:
                 sql_param = sql_param + " `" + i + "` ,"
             sql_param = sql_param[:-1]
-            sql = "select " + sql_param + " from `" + table_name + "` limit 1 offset " + str(num)
-            num = num + 1;
+            sql = "select " + sql_param + " from `" + table_name + "` limit "+one_time_num+" offset " + str(num)
+            num = num + one_time_num;
             cursor.execute(sql)
             results = cursor.fetchall()
             # print(results[0])
