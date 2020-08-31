@@ -4,10 +4,10 @@ import pymysql
 import re
 import datetime
 
-dirPath = 'c:\\test\\'
+dirPath = 'D:\\test3\\'
 database="ximenzi"
 UUID="123"
-num=80
+num=20
 starttime = datetime.datetime.now()
 def table_exists(con,table_name) :#这个函数用来判断表是否存在
     sql = "show tables;"
@@ -54,13 +54,13 @@ def get_dict_allkeys(dict_a):
 db = pymysql.connect(host="localhost", user="root",password="123456",database="ximenzi",charset='utf8')
 # 使用cursor()方法获取操作游标
 cursor = db.cursor()
-sql="select COLUMN_NAME from information_schema.COLUMNS where table_name = 'demo';"
+sql="select COLUMN_NAME from information_schema.COLUMNS where table_name = 'demo3';"
 cursor.execute(sql)
 results = cursor.fetchall()
 for row in results:
     if row[0]!="id" :
         all_keys.append(row[0])
-n=0
+
 for i,j,k in os.walk(dirPath):
     for m in k:
         filePath=dirPath+m
@@ -92,9 +92,6 @@ for i,j,k in os.walk(dirPath):
             if lines=="\n":
                 continue
             #print(lines,end="")
-            n=n+1
-            if n%10000==0:
-                print("当前第"+str(n))
             data = json.loads(lines)#字符串转json
             #print(str(data))
             col=[]
