@@ -3,11 +3,8 @@ import json
 import pymysql
 import re
 
-#输入文件所在的文件夹
-from pandas.io.sql import table_exists
 
-
-dirPath = 'D:\\test\\'
+dirPath = 'D:\\test3\\'
 database="ximenzi"
 LENGTH=20
 
