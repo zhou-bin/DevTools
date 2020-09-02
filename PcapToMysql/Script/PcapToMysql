@@ -69,8 +69,8 @@ def parseRadius(filepath,tableName,uuid):
 
             src = socket.inet_ntoa(ip.src)  # 源ip
             dst = socket.inet_ntoa(ip.dst)  # 目的ip
-            col.append(str(src))
             col.append(str(dst))
+            col.append(str(src))
             # print("*" * 40)
             # print("dst=" + str(dst))
             dst = str(dst)
