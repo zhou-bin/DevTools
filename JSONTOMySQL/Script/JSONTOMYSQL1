@@ -4,9 +4,9 @@ import pymysql
 import re
 
 
-dirPath = 'D:\\test3\\'
+dirPath = 'C:\\Users\\siemens\\Desktop\\szp\\测试1数据\\ot\\json\\'
 database="ximenzi"
-LENGTH=20
+LENGTH=40
 
 
 def table_exists(con,table_name) :#这个函数用来判断表是否存在
@@ -20,8 +20,6 @@ def table_exists(con,table_name) :#这个函数用来判断表是否存在
     else:
         return 0;#不存在返回0
 
-key_list = []
-dic={ }
 key_set=set();
 def get_dict_allkeys(dict_a):
     """
@@ -29,6 +27,7 @@ def get_dict_allkeys(dict_a):
     :param dict_a:
     :return: key_list
     """
+    key_list = []
     if isinstance(dict_a, dict):  # 使用isinstance检测数据类型
         # 如果为字典类型，则提取key存放到key_list中
         for x in range(len(dict_a)):
@@ -49,7 +48,7 @@ def get_dict_allkeys(dict_a):
 
 
 # 打开数据库连接
-db = pymysql.connect(host="localhost", user="root",password="123456",database="ximenzi",charset='utf8')
+db = pymysql.connect(host="localhost", user="root",password="123456",database=database,charset='utf8')
 # 使用cursor()方法获取操作游标
 cursor = db.cursor()
 
@@ -72,12 +71,14 @@ for i,j,k in os.walk(dirPath):
             if lines=="\n":
                 continue
             #print(lines,end="")
+            #print(lines)
             data = json.loads(lines)#字符串转json
             #print(str(data))
             get_keys = get_dict_allkeys(data)#从json取出key
             for i in get_keys:
                 key_set.add(i)#将key加入集合中
-                if LENGTH < len(str(data[i])):
+                #print(str(data))
+                if  LENGTH < len(str(data[i])):
                     print("长度："+str(LENGTH)+"不够，其中有长度为："+str(len(str(data[i]))))
                     os._exit(0)  #退出程序
         #开始创建MySQL表
