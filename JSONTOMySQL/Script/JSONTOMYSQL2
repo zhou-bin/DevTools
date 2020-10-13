@@ -4,10 +4,10 @@ import pymysql
 import re
 import datetime
 
-dirPath = 'D:\\test3\\'
+dirPath = 'C:\\Users\\siemens\\Desktop\\szp\\测试1数据\\ot\\json\\'
 database="ximenzi"
 UUID="123"
-num=20
+num=40
 starttime = datetime.datetime.now()
 def table_exists(con,table_name) :#这个函数用来判断表是否存在
     sql = "show tables;"
@@ -51,10 +51,10 @@ def get_dict_allkeys(dict_a):
 
 
 # 打开数据库连接
-db = pymysql.connect(host="localhost", user="root",password="123456",database="ximenzi",charset='utf8')
+db = pymysql.connect(host="localhost", user="root",password="123456",database=database,charset='utf8')
 # 使用cursor()方法获取操作游标
 cursor = db.cursor()
-sql="select COLUMN_NAME from information_schema.COLUMNS where table_name = 'demo3';"
+sql="select COLUMN_NAME from information_schema.COLUMNS where table_name = 'conn_ot';"
 cursor.execute(sql)
 results = cursor.fetchall()
 for row in results:
@@ -72,11 +72,12 @@ for i,j,k in os.walk(dirPath):
             print("表不存在")
             break
         #拼接sql
-        sql = """INSERT INTO `""" + tableName + """`("""
+        sql = """INSERT INTO `""" + tableName + """`( `create_time` ,  """
         sql2= " VALUES(now()"
         for i in all_keys:
-            sql += "`" + str(i) + "`,"
+
             if i != "create_time":
+                sql += "`" + str(i) + "`,"
                 sql2+=",%s"
         sql=sql[:-1]
         sql+=")"
@@ -106,6 +107,7 @@ for i,j,k in os.walk(dirPath):
             res.append(tuple(col))
             num_label=num_label+1
             if num_label==num:
+                print(sql)
                 cursor.executemany(sql, res)
                 db.commit()
                 res.clear()
