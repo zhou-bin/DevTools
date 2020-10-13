@@ -8,6 +8,7 @@ import socket
 import struct
 import datetime
 import pymysql
+import binascii
 
 tcp_or_udp = {}
 tcp_or_udp[6] = 'tcp'
@@ -32,8 +33,8 @@ def parseRadius(filepath,tableName,uuid):
     fpcap.seek(24, 0)
     string_data=fpcap.read(16)
     packet_num=0
-    sql = "INSERT INTO`" + tableName + "`(`create_time`,`uuid`,`high_time_stamp`,`low_time_stamp`,`destination_address`," \
-          + "`source_address`,`protocol`,`destination_port`,`source_port`,`seq`,`ack`,`sum`,`flag`,`offset`)" + "value(now(),"+str(uuid)+",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+    sql = "INSERT INTO`" + tableName + "`(`create_time`,`uuid`,`high_time_stamp`,`low_time_stamp`,`mac_dst`,`mac_src`,`destination_address`," \
+          + "`source_address`,`protocol`,`ip_len`,`destination_port`,`source_port`,`seq`,`ack`,`sum`,`flag`,`offset`)" + "value(now(),"+str(uuid)+",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
     res=[]
 
     num_sql=0
@@ -63,6 +64,15 @@ def parseRadius(filepath,tableName,uuid):
         if len(string_data)!=packet_len:
             break
         ether = dpkt.ethernet.Ethernet(string_data)
+        # 写出正则表达式 任意2个字符
+        pattern = re.compile('.{2}')
+        # findall是找到所有的字符,再在字符中添加空格，当然你想添加其他东西当然也可以
+        #print(':'.join(pattern.findall(str(binascii.hexlify(ether.dst))[2:-1])))
+        mac_dst = str(':'.join(pattern.findall(str(binascii.hexlify(ether.dst))[2:-1])))
+        col.append(mac_dst)
+        #print(':'.join(pattern.findall(str(binascii.hexlify(ether.src))[2:-1])))
+        mac_src = str(':'.join(pattern.findall(str(binascii.hexlify(ether.src))[2:-1])))
+        col.append(mac_src)
         # 判断为传输层为ip
         if ether.type == dpkt.ethernet.ETH_TYPE_IP:
             ip = ether.data  # ip数据包
@@ -82,6 +92,7 @@ def parseRadius(filepath,tableName,uuid):
             # print("协议：" + str(ip_pro))
             protocol = str(ip_pro)
             col.append(str(ip_pro))
+            col.append(str(ip.len))
             if str(ip_pro)=="icmp":
                 col.append("")
                 col.append("")
@@ -91,7 +102,7 @@ def parseRadius(filepath,tableName,uuid):
                 col.append("")
                 col.append("")
             # 传输层为tcp 或者 udp 协议
-            if isinstance(data, dpkt.tcp.TCP):
+            elif isinstance(data, dpkt.tcp.TCP):
                 dport = str(data.dport)
                 col.append(str(data.dport))
                 # print("目的端口号：" + str(dport))
@@ -103,7 +114,7 @@ def parseRadius(filepath,tableName,uuid):
                 col.append(str(data.sum)) #校验和
                 col.append(str(data.flags))  # flags
                 col.append(str(data._off))  # 偏移量
-            if isinstance(data, dpkt.udp.UDP):
+            elif isinstance(data, dpkt.udp.UDP):
                 dport = str(data.dport)
                 col.append(str(data.dport))
                 # print("目的端口号：" + str(dport))
@@ -115,12 +126,20 @@ def parseRadius(filepath,tableName,uuid):
                 col.append("")
                 col.append("")
                 col.append("")
+            else:
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
             packet_num += 1;
             if packet_num%10000==0:
                 print("已经插入"+str(packet_num))
             num_sql+=1
             res.append(tuple(col))
-            if num_sql==40:
+            if num_sql==600:
                 cursor.executemany(sql, res)
                 db.commit()
                 res.clear()
@@ -136,11 +155,11 @@ def parseRadius(filepath,tableName,uuid):
 
 
 if __name__ == '__main__':
-    dirPath = 'd:\\test\\'
-    database = "ximenzi"
+    dirPath = 'C:\\Users\\siemens\\Desktop\\szp\\测试1数据\\pcap\\1\\'
+    database = "test0923_2"
     uuid=123
     # 打开数据库连接
-    db = pymysql.connect(host="localhost", user="root", password="123456", database="ximenzi", charset='utf8')
+    db = pymysql.connect(host="localhost", user="root", password="123456", database=database, charset='utf8')
     # 使用cursor()方法获取操作游标
     cursor = db.cursor()
     for i, j, k in os.walk(dirPath):
@@ -153,14 +172,17 @@ if __name__ == '__main__':
                 print("表已经存在")
                 break
             sql = """CREATE TABLE `""" + tableName + """` (
-                             `id`  bigint NOT NULL AUTO_INCREMENT,
-                             `create_time`   datetime,
-                             `uuid` int, 
+                              `id`  bigint NOT NULL AUTO_INCREMENT,
+                              `create_time`   datetime,
+                              `uuid` int, 
                               `high_time_stamp` varchar(20),
                               `low_time_stamp` varchar(20),
+                              `mac_dst` varchar(20),
+                              `mac_src` varchar(20),
                               `destination_address` varchar(20),
                               `source_address` varchar(20),
                               `protocol` varchar(20) ,
+                              `ip_len` varchar(20) ,
                               `seq` varchar(20) ,
                               `ack` varchar(20) ,
                               `sum` varchar(20) ,
