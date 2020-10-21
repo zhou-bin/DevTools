@@ -73,10 +73,33 @@ def parseRadius(filepath,tableName,uuid):
         #print(':'.join(pattern.findall(str(binascii.hexlify(ether.src))[2:-1])))
         mac_src = str(':'.join(pattern.findall(str(binascii.hexlify(ether.src))[2:-1])))
         col.append(mac_src)
-        # 判断为传输层为ip
-        if ether.type == dpkt.ethernet.ETH_TYPE_IP:
-            ip = ether.data  # ip数据包
 
+        if ether.type == dpkt.ethernet.ETH_TYPE_ARP:
+            arp = ether.data
+            # print("arp")
+            # print(arp.hrd)#硬件类型，1
+            # print(arp.pro) #协议类型，ip:2018(十进制)、0800（十六进制）
+            # print(arp.hln) #硬件类型长度 6
+            # print(arp.pln) #协议类型长度 4
+            # print(arp.op)   #操作类型 ARP请求为1，ARP响应为2，RARP请求为3，RARP响应为4
+            # print(str(':'.join(pattern.findall(str(binascii.hexlify(arp.sha))[2:-1]))))  #源硬件地址
+            # print(socket.inet_ntoa(arp.spa))                                             #源ip地址
+            # print(str(':'.join(pattern.findall(str(binascii.hexlify(arp.tha))[2:-1]))))  #目的硬件地址
+            # print(socket.inet_ntoa(arp.tpa))                                             #目的ip地址
+            col.append(socket.inet_ntoa(arp.spa))
+            col.append(socket.inet_ntoa(arp.tpa))
+            col.append("arp")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+      # 判断为传输层为ip
+        elif ether.type == dpkt.ethernet.ETH_TYPE_IP:
+            ip = ether.data  # ip数据包
             src = socket.inet_ntoa(ip.src)  # 源ip
             dst = socket.inet_ntoa(ip.dst)  # 目的ip
             col.append(str(dst))
@@ -134,16 +157,31 @@ def parseRadius(filepath,tableName,uuid):
                 col.append("")
                 col.append("")
                 col.append("")
-            packet_num += 1;
-            if packet_num%10000==0:
-                print("已经插入"+str(packet_num))
-            num_sql+=1
-            res.append(tuple(col))
-            if num_sql==600:
-                cursor.executemany(sql, res)
-                db.commit()
-                res.clear()
-                num_sql = 0
+        else:
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+        packet_num += 1;
+        if packet_num%10000==0:
+            print("已经插入"+str(packet_num))
+        num_sql+=1
+        res.append(tuple(col))
+        if num_sql==600:
+
+            cursor.executemany(sql, res)
+            db.commit()
+            res.clear()
+            num_sql = 0
+
+
         string_data = fpcap.read(16)
 
     print("总共包数：" + str(packet_num))
@@ -156,7 +194,7 @@ def parseRadius(filepath,tableName,uuid):
 
 if __name__ == '__main__':
     dirPath = 'C:\\Users\\siemens\\Desktop\\szp\\测试1数据\\pcap\\1\\'
-    database = "test0923_2"
+    database = "test1021"
     uuid=123
     # 打开数据库连接
     db = pymysql.connect(host="localhost", user="root", password="123456", database=database, charset='utf8')
