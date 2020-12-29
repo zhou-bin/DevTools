@@ -4,11 +4,19 @@ import pymysql
 import re
 
 
-dirPath = 'C:\\Users\\siemens\\Desktop\\szp\\测试1数据\\ot\\json\\'
-database="ximenzi"
-LENGTH=40
+#
+# jsonToMysql1
+# 根据json文件中具有的字段名称，创建数据库表
+#
 
 
+# json文件所在的文件夹
+dirPath = 'C:\\Users\\siemens\\Desktop\\szp\\测试找出80%的带宽\\ot\\dingzhiban_mq_50M\\'
+# 数据库名称
+database="dingzhiban_mq_50M"
+LENGTH=40  # 字段最大长度
+
+# 这个函数用来判断con连接的数据库里table_name表是否存在
 def table_exists(con,table_name) :#这个函数用来判断表是否存在
     sql = "show tables;"
     con.execute(sql)
@@ -20,7 +28,10 @@ def table_exists(con,table_name) :#这个函数用来判断表是否存在
     else:
         return 0;#不存在返回0
 
+
 key_set=set();
+
+# 这个函数根据json，获取所有的key
 def get_dict_allkeys(dict_a):
     """
     遍历嵌套字典，获取json返回结果的所有key值
@@ -46,13 +57,16 @@ def get_dict_allkeys(dict_a):
                     get_dict_allkeys(temp_value) # 自我调用实现无限遍历
     return key_list
 
+###################################
+#主函数
+##################################
 
 # 打开数据库连接
 db = pymysql.connect(host="localhost", user="root",password="123456",database=database,charset='utf8')
 # 使用cursor()方法获取操作游标
 cursor = db.cursor()
 
-
+# 遍历文件夹里的json文件
 for i,j,k in os.walk(dirPath):
     for m in k:
         filePath=dirPath+m
@@ -70,11 +84,8 @@ for i,j,k in os.walk(dirPath):
                 break
             if lines=="\n":
                 continue
-            #print(lines,end="")
-            #print(lines)
-            data = json.loads(lines)#字符串转json
-            #print(str(data))
-            get_keys = get_dict_allkeys(data)#从json取出key
+            data = json.loads(lines) #字符串转json
+            get_keys = get_dict_allkeys(data) #从json取出key
             for i in get_keys:
                 key_set.add(i)#将key加入集合中
                 #print(str(data))
