@@ -4,11 +4,22 @@ import pymysql
 import re
 import datetime
 
-dirPath = 'C:\\Users\\siemens\\Desktop\\szp\\测试1数据\\ot\\json\\'
-database="ximenzi"
+#
+# jsonToMysql2
+# 根据json数据保存到数据库表里
+#
+
+# json文件所在的文件夹
+dirPath = 'C:\\Users\\siemens\\Desktop\\szp\\测试找出80%的带宽\\ot\\dingzhiban_mq_50M\\'
+# 数据库名称
+database="dingzhiban_mq_50M"
 UUID="123"
-num=40
+num=400
+
+# 开始时间
 starttime = datetime.datetime.now()
+
+# 这个函数用来判断con连接的数据库里table_name表是否存在
 def table_exists(con,table_name) :#这个函数用来判断表是否存在
     sql = "show tables;"
     con.execute(sql)
@@ -20,10 +31,13 @@ def table_exists(con,table_name) :#这个函数用来判断表是否存在
     else:
         return 0;#不存在返回0
 
+
 key_list = []
 get_keys=[]
 all_keys=[]
 key_set=set();
+
+# 这个函数根据json，获取所有的key
 def get_dict_allkeys(dict_a):
     key_list.clear()
     """
@@ -49,14 +63,22 @@ def get_dict_allkeys(dict_a):
                     get_dict_allkeys(temp_value) # 自我调用实现无限遍历
     return key_list
 
+###################################
+#主函数
+##################################
+
 
 # 打开数据库连接
 db = pymysql.connect(host="localhost", user="root",password="123456",database=database,charset='utf8')
 # 使用cursor()方法获取操作游标
 cursor = db.cursor()
-sql="select COLUMN_NAME from information_schema.COLUMNS where table_name = 'conn_ot';"
+
+# 根据表名字查询字段
+sql="select COLUMN_NAME from information_schema.COLUMNS where TABLE_SCHEMA='dingzhiban_mq_50M' and  table_name = 'conn';"
 cursor.execute(sql)
 results = cursor.fetchall()
+
+# 将字段放于字典all_keys中
 for row in results:
     if row[0]!="id" :
         all_keys.append(row[0])
@@ -75,7 +97,6 @@ for i,j,k in os.walk(dirPath):
         sql = """INSERT INTO `""" + tableName + """`( `create_time` ,  """
         sql2= " VALUES(now()"
         for i in all_keys:
-
             if i != "create_time":
                 sql += "`" + str(i) + "`,"
                 sql2+=",%s"
@@ -107,7 +128,6 @@ for i,j,k in os.walk(dirPath):
             res.append(tuple(col))
             num_label=num_label+1
             if num_label==num:
-                print(sql)
                 cursor.executemany(sql, res)
                 db.commit()
                 res.clear()
