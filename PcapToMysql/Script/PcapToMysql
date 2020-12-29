@@ -10,14 +10,25 @@ import datetime
 import pymysql
 import binascii
 
+# 根据输入的路径，遍历输入的路径下的所以pcap包，以pcap包名为表名，保存到数据库里
+# 通过dpkt对pcap包解析
+# dpkt的官网api地址：https://dpkt.readthedocs.io/en/latest/api/index.html
+#
+
+
+#  常用的协议编号，更详细请参考：https://wenku.baidu.com/view/0d1dc10d4a7302768e9939ef.html
 tcp_or_udp = {}
 tcp_or_udp[6] = 'tcp'
 tcp_or_udp[17] = 'udp'
 tcp_or_udp[1] = 'icmp'
 tcp_or_udp[2] = 'igmp'
+tcp_or_udp[58] = 'ipv6-icmp'
+
+#  记录初始时间，用于计算运行时间
 starttime = datetime.datetime.now()
 
-def table_exists(con,table_name) :#这个函数用来判断表是否存在
+# 这个函数用来判断con连接的数据库里table_name表是否存在
+def table_exists(con,table_name) :
     sql = "show tables;"
     con.execute(sql)
     tables = [con.fetchall()]
@@ -28,66 +39,71 @@ def table_exists(con,table_name) :#这个函数用来判断表是否存在
     else:
         return 0;#不存在返回0
 
-def parseRadius(filepath,tableName,uuid):
+
+# 解析函数，根据filepath文件路径、tableName表名字、uuid
+def parseFunction(filepath,tableName,uuid):
+    # 打开该文件
     fpcap = open(filepath, 'rb')
+    # 每一个pcap文件只有一个文件头，总共占24（B）字节，读取24字节
     fpcap.seek(24, 0)
-    string_data=fpcap.read(16)
-    packet_num=0
+
+    # 数据包头可以有多个，每个数据包头后面都跟着真正的数据包。以下是数据包头的4个字段含义，共16字节
+    # Timestamp(4B)：时间戳高位，精确到seconds，这是Unix时间戳。捕获数据包的时间一般是根据这个值
+    # Timestamp(4B)：时间戳低位，能够精确到microseconds
+    # Caplen(4B)：当前数据区的长度，即抓取到的数据帧长度，由此可以得到下一个数据帧的位置。
+    # Len(4B)：离线数据长度，网路中实际数据帧的长度，一般不大于Caplen，多数情况下和Caplen值一样
+
+    string_data=fpcap.read(16)  # 读取一个数据包头，16字节，原因见上面解释
+    packet_num=0    # 用于数据包的计数
     sql = "INSERT INTO`" + tableName + "`(`create_time`,`uuid`,`high_time_stamp`,`low_time_stamp`,`mac_dst`,`mac_src`,`destination_address`," \
           + "`source_address`,`protocol`,`ip_len`,`destination_port`,`source_port`,`seq`,`ack`,`sum`,`flag`,`offset`)" + "value(now(),"+str(uuid)+",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
-    res=[]
-
+    res=[]   # 用于后续插入数据库的数据
     num_sql=0
-    while len(string_data)>=16:
+    while len(string_data)>=16: # 如果小于16字节，则是不完整的
         col = []
         pcap_packet_header = {}
-        #pcap_packet_header['GMTtime'] = string_data[i:i + 4]
-        # print("高位时间戳：")
-        # print(int.from_bytes(pcap_packet_header['GMTtime'], byteorder='little', signed=False))
+        # 前四个字节是高位时间戳
         GMTtime = int.from_bytes(string_data[0: 4], byteorder='little', signed=False);
-        col.append(GMTtime)
-        #pcap_packet_header['MicroTime'] = string_data[i + 4:i + 8]
-        # print("低位时间戳：")
-        # int.from_bytes(pcap_packet_header['len'],byteorder='little',signed=False)
-        # print(int.from_bytes(pcap_packet_header['MicroTime'], byteorder='little', signed=False))
+        col.append(GMTtime) # 将高位时间戳数据放于数组col中
+
+        # 再四个字节是低位时间戳
         MicroTime = int.from_bytes(string_data[4:8], byteorder='little', signed=False)
-        col.append(MicroTime)
-        #pcap_packet_header['caplen'] = string_data[i + 8:i + 12]
+        col.append(MicroTime) # 将低位时间戳数据放于数组col中
+
+        # 再四个字节是 数据区的长度
         pcap_packet_header['len'] = string_data[12:16]
+
         # 求出此包的包长len
         packet_len = struct.unpack('I', pcap_packet_header['len'])[0]
 
-        # 写入此包数据
         string_data = ''
-        string_data = fpcap.read(packet_len)
-        # 数据部分以太帧读取
-        if len(string_data)!=packet_len:
+        string_data = fpcap.read(packet_len) # 根据数据包长度读取
+
+
+        if len(string_data)!=packet_len: # 如果读取的数据长度<数据区长度，则结束循环。
             break
-        ether = dpkt.ethernet.Ethernet(string_data)
-        # 写出正则表达式 任意2个字符
+
+        ether = dpkt.ethernet.Ethernet(string_data)# 数据部分以太帧读取，即数据链路层
+
+        # 正则表达式 每个2个字符加“:”,用于保存mac地址
         pattern = re.compile('.{2}')
-        # findall是找到所有的字符,再在字符中添加空格，当然你想添加其他东西当然也可以
-        #print(':'.join(pattern.findall(str(binascii.hexlify(ether.dst))[2:-1])))
+
+        # 目的mac地址
         mac_dst = str(':'.join(pattern.findall(str(binascii.hexlify(ether.dst))[2:-1])))
+        # 将目的mac地址放到col
         col.append(mac_dst)
-        #print(':'.join(pattern.findall(str(binascii.hexlify(ether.src))[2:-1])))
+
+        # 源mac地址
         mac_src = str(':'.join(pattern.findall(str(binascii.hexlify(ether.src))[2:-1])))
+        # 将源mac地址放到col
         col.append(mac_src)
 
-        if ether.type == dpkt.ethernet.ETH_TYPE_ARP:
+        # 数据链路层结束，下面开始遍历具体协议
+
+        if ether.type == dpkt.ethernet.ETH_TYPE_ARP: # 如果是arp协议
             arp = ether.data
-            # print("arp")
-            # print(arp.hrd)#硬件类型，1
-            # print(arp.pro) #协议类型，ip:2018(十进制)、0800（十六进制）
-            # print(arp.hln) #硬件类型长度 6
-            # print(arp.pln) #协议类型长度 4
-            # print(arp.op)   #操作类型 ARP请求为1，ARP响应为2，RARP请求为3，RARP响应为4
-            # print(str(':'.join(pattern.findall(str(binascii.hexlify(arp.sha))[2:-1]))))  #源硬件地址
-            # print(socket.inet_ntoa(arp.spa))                                             #源ip地址
-            # print(str(':'.join(pattern.findall(str(binascii.hexlify(arp.tha))[2:-1]))))  #目的硬件地址
-            # print(socket.inet_ntoa(arp.tpa))                                             #目的ip地址
-            col.append(socket.inet_ntoa(arp.tpa))
-            col.append(socket.inet_ntoa(arp.spa))
+            col.append(socket.inet_ntoa(arp.tpa)) #arp.tpa   目的ip地址
+            col.append(socket.inet_ntoa(arp.spa)) # arp.spa   源ip地址
             col.append("arp")
             col.append("")
             col.append("")
@@ -97,26 +113,26 @@ def parseRadius(filepath,tableName,uuid):
             col.append("")
             col.append("")
             col.append("")
-      # 判断为传输层为ip
-        elif ether.type == dpkt.ethernet.ETH_TYPE_IP:
+        # 判断为传输层为ip 或 ipv6
+        elif ether.type == dpkt.ethernet.ETH_TYPE_IP or ether.type == dpkt.ethernet.ETH_TYPE_IP6:
             ip = ether.data  # ip数据包
-            src = socket.inet_ntoa(ip.src)  # 源ip
-            dst = socket.inet_ntoa(ip.dst)  # 目的ip
+            src = str(ipaddress.ip_address(ip.src))  # 源ip
+            dst = str(ipaddress.ip_address(ip.dst))  # 目的ip
             col.append(str(dst))
             col.append(str(src))
-            # print("*" * 40)
-            # print("dst=" + str(dst))
-            dst = str(dst)
-            # print("src=" + str(src))
-            src = str(src)
-            # 传输层数据
+
             data = ip.data
-            ip_pro = tcp_or_udp[ip.p]
-            # print("协议：" + str(ip_pro))
-            protocol = str(ip_pro)
+            ip_pro = tcp_or_udp[ip.p] # 根据协议号，判断协议类型
+
             col.append(str(ip_pro))
-            col.append(str(ip.len))
-            if str(ip_pro)=="icmp":
+
+            # ip和ipv6里面长度字段名称不一样，需要加个判断
+            if ether.type == dpkt.ethernet.ETH_TYPE_IP:
+                col.append(str(ip.len))
+            if ether.type == dpkt.ethernet.ETH_TYPE_IP6:
+                col.append(str(ip.plen))
+
+            if str(ip_pro)=="icmp":# 如果是icmp协议的
                 col.append("")
                 col.append("")
                 col.append("")
@@ -124,32 +140,23 @@ def parseRadius(filepath,tableName,uuid):
                 col.append("")
                 col.append("")
                 col.append("")
-            # 传输层为tcp 或者 udp 协议
-            elif isinstance(data, dpkt.tcp.TCP):
-                dport = str(data.dport)
-                col.append(str(data.dport))
-                # print("目的端口号：" + str(dport))
-                sport = str(data.sport)
-                col.append(str(data.sport))
-                # print("源端口号：" + str(sport))
-                col.append(str(data.seq))#序列号
-                col.append(str(data.ack))  #确认号
-                col.append(str(data.sum)) #校验和
+            elif isinstance(data, dpkt.tcp.TCP):# 传输层为tcp 或者 udp 协议
+                col.append(str(data.dport)) # 目的端口号
+                col.append(str(data.sport)) # 源端口号
+                col.append(str(data.seq)) # 序列号
+                col.append(str(data.ack))  # 确认号
+                col.append(str(data.sum)) # 校验和
                 col.append(str(data.flags))  # flags
                 col.append(str(data._off))  # 偏移量
             elif isinstance(data, dpkt.udp.UDP):
-                dport = str(data.dport)
-                col.append(str(data.dport))
-                # print("目的端口号：" + str(dport))
-                sport = str(data.sport)
-                col.append(str(data.sport))
-                # print("源端口号：" + str(sport))
+                col.append(str(data.dport))  # 目的端口号
+                col.append(str(data.sport)) # 源端口号
                 col.append("")
                 col.append("")
                 col.append("")
                 col.append("")
                 col.append("")
-            else:
+            else:   # 方便统计包数，如果其他传输层协议的也保存
                 col.append("")
                 col.append("")
                 col.append("")
@@ -157,32 +164,7 @@ def parseRadius(filepath,tableName,uuid):
                 col.append("")
                 col.append("")
                 col.append("")
-        elif ether.type == dpkt.ethernet.ETH_TYPE_IP6:
-            ip = ether.data  # ip数据包
-            #src = socket.inet_ntoa(ip.src)  # 源ip
-            #dst = socket.inet_ntoa(ip.dst)  # 目的ip
-            #print(str(ip.dst))
-            #print(ipaddress.ip_address(ip.dst))
-            #print(ipaddress.ip_address(ip.src))
-            col.append(str(ipaddress.ip_address(ip.dst)))
-            col.append(str(ipaddress.ip_address(ip.src)))
-            col.append("ipv6")
-            col.append("")
-            col.append("")
-            col.append("")
-            col.append("")
-            col.append("")
-            col.append("")
-            col.append("")
-            col.append("")
-        elif ether.type == dpkt.ethernet.llc:
-            ip = ether.data  # ip数据包
-
-            print(str(ip.dst))
-            print(ipaddress.ip_address(ip.dsap))
-            print(ipaddress.ip_address(ip.ssap))
-
-        else:
+        else:  # 方便统计包数，如果其他网络层协议的也保存
             col.append("")
             col.append("")
             col.append("其他协议") #其他数据链路层的包
@@ -194,22 +176,23 @@ def parseRadius(filepath,tableName,uuid):
             col.append("")
             col.append("")
             col.append("")
-        packet_num += 1;
-        if packet_num%10000==0:
+
+        packet_num += 1; # 包数+1
+        if packet_num%10000==0:  # 每插入10000条数据，输出一次
             print("已经插入"+str(packet_num))
-        num_sql+=1
+        num_sql+=1 # mysql批量输入的数量
         res.append(tuple(col))
-        if num_sql==600:
+        if num_sql==600:# mysql批量输入的数量，每次插入数量为600
             cursor.executemany(sql, res)
             db.commit()
             res.clear()
             num_sql = 0
 
 
-        string_data = fpcap.read(16)
+        string_data = fpcap.read(16) # 继续遍历下一个pacp数据包
 
     print("总共包数：" + str(packet_num))
-    if num_sql!=0:
+    if num_sql!=0: # num_sql！=0说明还要每插入的数据，最好一次性插入
         cursor.executemany(sql, res)
         db.commit()
         res.clear()
@@ -217,8 +200,8 @@ def parseRadius(filepath,tableName,uuid):
 
 
 if __name__ == '__main__':
-    dirPath = 'C:\\Users\\siemens\\Desktop\\szp\\测试1数据\\pcap\\1\\'
-    database = "test1028"
+    dirPath = 'C:\\Users\\siemens\\Desktop\\szp\\测试1数据\\pcap\\2\\' # 文件路径地址
+    database = "ot2"   # 保存的数据库名称
     uuid=123
     # 打开数据库连接
     db = pymysql.connect(host="localhost", user="root", password="123456", database=database, charset='utf8')
@@ -255,7 +238,7 @@ if __name__ == '__main__':
             #print(sql)
             cursor.execute(sql)
             db.commit()
-            parseRadius(filePath,tableName,uuid)
+            parseFunction(filePath,tableName,uuid)
             db.close()
     endtime = datetime.datetime.now()
     print(endtime - starttime)
