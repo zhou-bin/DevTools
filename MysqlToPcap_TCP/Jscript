@@ -1,0 +1,228 @@
+#!/usr/bin/env python
+# coding: utf-8
+import binascii
+import socket
+from binascii import hexlify
+import pymysql
+
+# ip协议校验和
+def ip_sum(strs):
+    sum=0;
+
+    sum+=int(strs[5])*256 #69,ip_version_headlen 8位
+    sum += int(strs[6])  # ip_tos_ecn   8位
+
+    sum += 40  # ip_total_len  16位
+    sum += int(strs[8]) # ip_id 16位
+    sum += int(strs[9])  # ip_off 16位
+
+    sum += int(strs[10])*256  # ip_ttl 8位
+    sum += int(strs[11])  # ip_pro 8位
+
+    ip_destination_address=str(hexlify(socket.inet_aton(strs[13])))
+    sum += int(ip_destination_address[2:6], 16) #ip_destination_address
+    sum += int(ip_destination_address[6:10], 16)  # ip_destination_address
+
+    ip_source_address = str(hexlify(socket.inet_aton(strs[14])))
+    sum += int(ip_source_address[2:6], 16)  # ip_source_address
+    sum += int(ip_source_address[6:10], 16)  # ip_source_address
+    new_sum=int(sum%65536)+int(sum/65536) # 将高于16位的数加到低位上
+    new_str=str(hex(new_sum))[2:6]
+    new_fan=0;
+    # 按位取反
+    for i in new_str:
+        new_fan=new_fan*16+(15-int(i,16))
+    return str(hex(new_fan))[2:6];
+
+
+# tcp协议校验和
+def tcp_sum(strs):
+    sum=0;
+
+    # 首先计算12字节tcp的伪头部
+    ip_destination_address = str(hexlify(socket.inet_aton(strs[13])))
+    sum += int(ip_destination_address[2:6], 16)  # ip_destination_address
+    sum += int(ip_destination_address[6:10], 16)  # ip_destination_address
+
+    ip_source_address = str(hexlify(socket.inet_aton(strs[14])))
+    sum += int(ip_source_address[2:6], 16)  # ip_source_address
+    sum += int(ip_source_address[6:10], 16)  # ip_source_address
+
+    sum += int(strs[11])  # ip_pro 8位，前8位用0填充了
+    sum += 20  # tcp长度
+    # 计算12字节tcp的伪头部完成
+
+    # 计算tcp头部
+    sum += int(strs[22])  # destination_port 16位
+
+    sum += int(strs[23])  # source_port 16位
+
+    sum += int(int(strs[15])%65536)# seq 16位
+    sum += int(int(strs[15]) / 65536)  # seq 16位
+
+    sum += int(int(strs[16]) % 65536)  # ack 16位
+    sum += int(int(strs[16]) / 65536)  # ack 16位
+
+    sum += int(strs[19])*256  # offset 8位
+    sum += int(strs[18])  # flag 8位
+
+    sum += int(strs[20])  # win 16位
+    sum += int(strs[21])  # urp 16位
+    # 计算tcp头部完成
+
+    new_sum = int(sum % 65536) + int(sum / 65536)  # 将高于16位的数加到低位上
+    new_str = str(hex(new_sum))[2:6]
+    new_fan = 0;
+    # 按位取反
+    for i in new_str:
+        new_fan = new_fan * 16 + (15 - int(i, 16))
+    return str(hex(new_fan))[2:6];
+
+#======================================================================
+#  主函数
+#======================================================================
+pcap_head="d4c3b2a10200040000000000000000000000040001000000"
+file = open("D:\\test\\test123.pcap", "wb")
+db = pymysql.connect(host="localhost", user="root", password="123456", database="ot", charset='utf8')
+table_name='123'
+cursor = db.cursor()
+sql="SELECT `high_time_stamp`,`low_time_stamp`,`caplen`,`mac_dst`,`mac_src`,`ip_version_headlen`,`ip_tos_ecn` ,"\
+    +"`ip_total_len`,`ip_id`,`ip_off`,`ip_ttl`,`ip_pro`,`ip_sum`,`ip_destination_address`,"\
+    +"`ip_source_address`,`seq`,`ack`,`sum`,`flag`,`offset`,`win`,"\
+    +"`urp`,`destination_port`,`source_port`"\
+    +"FROM `"+table_name+"` WHERE ip_pro = '6' "
+cursor.execute(sql)
+result = cursor.fetchall()
+file.write(bytes.fromhex(pcap_head))
+for i in result :
+    # 高时间戳
+    high_time_stamp=format(int(i[0]), 'x')
+    while len(high_time_stamp)<8 :
+        high_time_stamp="0"+high_time_stamp
+    file.write(bytes.fromhex(high_time_stamp))
+
+    # 低时间戳
+    low_time_stamp = format(int(i[1]), 'x')
+    while len(low_time_stamp) < 8:
+        low_time_stamp = "0" + low_time_stamp
+    file.write(bytes.fromhex(low_time_stamp))
+
+    # 长度
+    caplen = "36000000" #16进制，10进制位54
+    file.write(bytes.fromhex(caplen))
+    file.write(bytes.fromhex(caplen))
+
+    file.write(bytes.fromhex(i[3].replace(":",""))) # mac_dst
+    file.write(bytes.fromhex(i[4].replace(":",""))) # mac_src
+
+    # ivv4 0800
+    file.write(bytes.fromhex("0800"))
+
+    # ip_version_headlen
+    file.write(bytes.fromhex(format(int(i[5]), 'x')))# ip_version_headlen
+
+    # ip_tos_ecn
+    ip_tos_ecn=format(int(i[6]), 'x')
+    while len(ip_tos_ecn) <2 :
+        ip_tos_ecn="0"+ip_tos_ecn
+    file.write(bytes.fromhex(ip_tos_ecn))
+
+    #ip_total_len 0028
+    ip_total_len="0028"
+    file.write(bytes.fromhex(ip_total_len))
+
+    #ip_id
+    ip_id = format(int(i[8]), 'x')
+    while len(ip_id) < 4:
+        ip_id = "0" + ip_id
+    file.write(bytes.fromhex(ip_id))
+
+    #ip_off
+    ip_off = format(int(i[9]), 'x')
+    while len(ip_off) < 4:
+        ip_off = "0" + ip_off
+    file.write(bytes.fromhex(ip_off))
+
+    #ip_ttl
+    ip_ttl = format(int(i[10]), 'x')
+    while len(ip_off) < 2:
+        ip_ttl = "0" + ip_ttl
+    file.write(bytes.fromhex(ip_ttl))
+
+    #ip_pro
+    ip_pro = format(int(i[11]), 'x')
+    while len(ip_pro) < 2:
+        ip_pro = "0" + ip_pro
+    file.write(bytes.fromhex(ip_pro))
+
+    #ip_sum
+    ip_sum_num = ip_sum(i)
+    while len(ip_sum_num) < 4:
+        ip_sum_num = "0" + ip_sum_num
+    print(ip_sum_num)
+    file.write(bytes.fromhex(ip_sum_num))
+
+    # src_ip_address
+    file.write(bytes.fromhex(str(hexlify(socket.inet_aton(i[14])))[2:10]))
+    #dst_ip_address
+    file.write(bytes.fromhex(str(hexlify(socket.inet_aton(i[13])))[2:10]))
+
+
+    # source_port
+    source_port = format(int(i[23]), 'x')
+    while len(source_port) < 4:
+        source_port = "0" + source_port
+    file.write(bytes.fromhex(source_port))
+
+    # destination_port
+    destination_port = format(int(i[22]), 'x')
+    while len(destination_port) < 4:
+        destination_port = "0" + destination_port
+    file.write(bytes.fromhex(destination_port))
+
+    #seq
+    seq = format(int(i[15]), 'x')
+    while len(seq) < 8:
+        seq = "0" + seq
+    file.write(bytes.fromhex(seq))
+
+    # ack
+    ack = format(int(i[16]), 'x')
+    while len(ack) < 8:
+        ack = "0" + ack
+    file.write(bytes.fromhex(ack))
+
+    # offset 50  前四位为头部长度5（*4=20）
+    offset = "50"
+    file.write(bytes.fromhex(offset))
+
+    # flag
+    flag = format(int(i[18]), 'x')
+    while len(flag) < 2:
+        flag = "0" + flag
+    file.write(bytes.fromhex(flag))
+    # win
+    win = format(int(i[20]), 'x')
+    while len(win) < 4:
+        win = "0" + win
+    file.write(bytes.fromhex(win))
+
+    # sum
+    sum = tcp_sum(i)
+    while len(sum) < 4:
+        sum = "0" + sum
+    file.write(bytes.fromhex(sum))
+
+    #urp
+    urp = format(int(i[21]), 'x')
+    while len(urp) < 4:
+        urp = "0" + urp
+    file.write(bytes.fromhex(urp))
+
+
+db.commit()
+db.close()
+
+
+
+
