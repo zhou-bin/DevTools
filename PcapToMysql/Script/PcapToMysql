@@ -45,8 +45,12 @@ def parseFunction(filepath,tableName,uuid):
     # 打开该文件
     fpcap = open(filepath, 'rb')
     # 每一个pcap文件只有一个文件头，总共占24（B）字节，读取24字节
-    fpcap.seek(24, 0)
-
+    #fpcap.seek(24, 0)
+    head = fpcap.read(24)
+    #print(hex(int.from_bytes(head[0: 4], byteorder='big', signed=False)))
+    #print(int.from_bytes(head[4: 8], byteorder='big', signed=False))
+    print(head)
+    #return
     # 数据包头可以有多个，每个数据包头后面都跟着真正的数据包。以下是数据包头的4个字段含义，共16字节
     # Timestamp(4B)：时间戳高位，精确到seconds，这是Unix时间戳。捕获数据包的时间一般是根据这个值
     # Timestamp(4B)：时间戳低位，能够精确到microseconds
@@ -55,19 +59,24 @@ def parseFunction(filepath,tableName,uuid):
 
     string_data=fpcap.read(16)  # 读取一个数据包头，16字节，原因见上面解释
     packet_num=0    # 用于数据包的计数
-    sql = "INSERT INTO`" + tableName + "`(`create_time`,`uuid`,`high_time_stamp`,`low_time_stamp`,`mac_dst`,`mac_src`,`destination_address`," \
-          + "`source_address`,`protocol`,`ip_len`,`destination_port`,`source_port`,`seq`,`ack`,`sum`,`flag`,`offset`)" + "value(now(),"+str(uuid)+",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+    sql = "INSERT INTO`" + tableName + "`(`create_time`,`uuid`,`high_time_stamp`,`low_time_stamp`,`caplen`,`mac_dst`,`mac_src`," \
+          + "`ip_version_headlen`,`ip_tos_ecn`,`ip_total_len`,`ip_id`,`ip_off`,`ip_ttl`,`ip_pro`,`ip_sum`," \
+          + "`ip_destination_address`,`ip_source_address`" \
+          +",`destination_port`,`source_port`,`seq`,`ack`,`sum`,`flag`,`offset`,`win`,`urp`)" \
+          + "value(now(),"+str(uuid)+",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
     res=[]   # 用于后续插入数据库的数据
     num_sql=0
+
     while len(string_data)>=16: # 如果小于16字节，则是不完整的
+
         col = []
         pcap_packet_header = {}
         # 前四个字节是高位时间戳
-        GMTtime = int.from_bytes(string_data[0: 4], byteorder='little', signed=False);
+        GMTtime = int.from_bytes(string_data[0: 4], byteorder='big', signed=False);
         col.append(GMTtime) # 将高位时间戳数据放于数组col中
 
         # 再四个字节是低位时间戳
-        MicroTime = int.from_bytes(string_data[4:8], byteorder='little', signed=False)
+        MicroTime = int.from_bytes(string_data[4:8], byteorder='big', signed=False)
         col.append(MicroTime) # 将低位时间戳数据放于数组col中
 
         # 再四个字节是 数据区的长度
@@ -76,11 +85,13 @@ def parseFunction(filepath,tableName,uuid):
         # 求出此包的包长len
         packet_len = struct.unpack('I', pcap_packet_header['len'])[0]
 
+        col.append(packet_len)  # 将长度数据放于数组col中
         string_data = ''
+
         string_data = fpcap.read(packet_len) # 根据数据包长度读取
 
-
         if len(string_data)!=packet_len: # 如果读取的数据长度<数据区长度，则结束循环。
+
             break
 
         ether = dpkt.ethernet.Ethernet(string_data)# 数据部分以太帧读取，即数据链路层
@@ -102,9 +113,18 @@ def parseFunction(filepath,tableName,uuid):
 
         if ether.type == dpkt.ethernet.ETH_TYPE_ARP: # 如果是arp协议
             arp = ether.data
-            col.append(socket.inet_ntoa(arp.tpa)) #arp.tpa   目的ip地址
-            col.append(socket.inet_ntoa(arp.spa)) # arp.spa   源ip地址
+
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
             col.append("arp")
+            col.append("")
+            col.append(socket.inet_ntoa(arp.tpa))  # arp.tpa   目的ip地址
+            col.append(socket.inet_ntoa(arp.spa))  # arp.spa   源ip地址
+            col.append("")
             col.append("")
             col.append("")
             col.append("")
@@ -116,21 +136,32 @@ def parseFunction(filepath,tableName,uuid):
         # 判断为传输层为ip 或 ipv6
         elif ether.type == dpkt.ethernet.ETH_TYPE_IP or ether.type == dpkt.ethernet.ETH_TYPE_IP6:
             ip = ether.data  # ip数据包
-            src = str(ipaddress.ip_address(ip.src))  # 源ip
-            dst = str(ipaddress.ip_address(ip.dst))  # 目的ip
-            col.append(str(dst))
-            col.append(str(src))
-
             data = ip.data
             ip_pro = tcp_or_udp[ip.p] # 根据协议号，判断协议类型
 
-            col.append(str(ip_pro))
-
             # ip和ipv6里面长度字段名称不一样，需要加个判断
             if ether.type == dpkt.ethernet.ETH_TYPE_IP:
-                col.append(str(ip.len))
+                col.append(str(ip._v_hl))  # 4位版本号+4位首都长度
+                col.append(str(ip.tos))  # 6位区分服务+2位ECN
+                col.append(str(ip.len))  # 16位总长度
+                col.append(str(ip.id))  # 16标识位
+                col.append(str(ip.off))  # 3位标识位+13位偏移长度
+                col.append(str(ip.ttl))  # 8位生存时间
+                col.append(str(ip.p))  # 8位协议号
+                col.append(str(ip.sum))  # 16位校验和
+                col.append(str(ipaddress.ip_address(ip.dst)))  # 目的ip
+                col.append(str(ipaddress.ip_address(ip.src)))  # 源ip
             if ether.type == dpkt.ethernet.ETH_TYPE_IP6:
+                col.append("")
+                col.append("")
                 col.append(str(ip.plen))
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
 
             if str(ip_pro)=="icmp":# 如果是icmp协议的
                 col.append("")
@@ -141,16 +172,22 @@ def parseFunction(filepath,tableName,uuid):
                 col.append("")
                 col.append("")
             elif isinstance(data, dpkt.tcp.TCP):# 传输层为tcp 或者 udp 协议
+
                 col.append(str(data.dport)) # 目的端口号
                 col.append(str(data.sport)) # 源端口号
                 col.append(str(data.seq)) # 序列号
                 col.append(str(data.ack))  # 确认号
+
                 col.append(str(data.sum)) # 校验和
                 col.append(str(data.flags))  # flags
                 col.append(str(data._off))  # 偏移量
+                col.append(str(data.win))  # 窗口大小
+                col.append(str(data.urp))  # 紧急指针
             elif isinstance(data, dpkt.udp.UDP):
                 col.append(str(data.dport))  # 目的端口号
                 col.append(str(data.sport)) # 源端口号
+                col.append("")
+                col.append("")
                 col.append("")
                 col.append("")
                 col.append("")
@@ -164,11 +201,22 @@ def parseFunction(filepath,tableName,uuid):
                 col.append("")
                 col.append("")
                 col.append("")
+                col.append("")
+                col.append("")
         else:  # 方便统计包数，如果其他网络层协议的也保存
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
             col.append("")
             col.append("")
             col.append("其他协议") #其他数据链路层的包
             col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+
             col.append("")
             col.append("")
             col.append("")
@@ -200,8 +248,8 @@ def parseFunction(filepath,tableName,uuid):
 
 
 if __name__ == '__main__':
-    dirPath = 'C:\\Users\\siemens\\Desktop\\szp\\测试1数据\\pcap\\2\\' # 文件路径地址
-    database = "ot2"   # 保存的数据库名称
+    dirPath = 'D:\\test\\' # 文件路径地址
+    database = "ot"   # 保存的数据库名称
     uuid=123
     # 打开数据库连接
     db = pymysql.connect(host="localhost", user="root", password="123456", database=database, charset='utf8')
@@ -217,24 +265,33 @@ if __name__ == '__main__':
                 print("表已经存在")
                 break
             sql = """CREATE TABLE `""" + tableName + """` (
-                              `id`  bigint NOT NULL AUTO_INCREMENT,
-                              `create_time`   datetime,
-                              `uuid` int, 
-                              `high_time_stamp` varchar(20),
-                              `low_time_stamp` varchar(20),
-                              `mac_dst` varchar(128),
-                              `mac_src` varchar(128),
-                              `destination_address` varchar(128),
-                              `source_address` varchar(128),
-                              `protocol` varchar(20) ,
-                              `ip_len` varchar(20) ,
-                              `seq` varchar(20) ,
-                              `ack` varchar(20) ,
-                              `sum` varchar(20) ,
-                              `flag` varchar(20) ,
-                              `offset` varchar(20) ,
-                              `destination_port` varchar(20) ,
-                              `source_port` varchar(20),PRIMARY KEY(`id`))"""
+                              `id`  bigint NOT NULL AUTO_INCREMENT COMMENT '主键id，自增',
+                              `create_time`   datetime COMMENT '创建时间',
+                              `uuid` int COMMENT 'uuid', 
+                              `high_time_stamp` varchar(20) COMMENT 'pcap数据报文头部的高时间戳',
+                              `low_time_stamp` varchar(20) COMMENT 'pcap数据报文头部的低时间戳',
+                              `caplen` varchar(20) COMMENT 'pcap数据报文头部的长度',
+                              `mac_dst` varchar(128) COMMENT 'mac目的地址',
+                              `mac_src` varchar(128) COMMENT 'mac源地址',
+                              `ip_version_headlen` varchar(128)  COMMENT 'ip协议字段，8位，前4位ip版本号，后4位头部长度',
+                              `ip_tos_ecn` varchar(128) COMMENT 'ip协议字段，8位，前6位区分服务，后2位ECN',
+                              `ip_total_len` varchar(128) COMMENT 'ip协议字段，16位，IP总长度',
+                              `ip_id` varchar(128) COMMENT 'ip协议字段，16位，IP标识',
+                              `ip_off` varchar(128)  COMMENT 'ip协议字段，16位，前3位标志，后13位偏移量',
+                              `ip_ttl` varchar(128) COMMENT 'ip协议字段，8位，生成时间',
+                              `ip_pro` varchar(128) COMMENT 'ip协议字段，8位，协议号',
+                              `ip_sum` varchar(128) COMMENT 'ip协议字段，16位，校验和',
+                              `ip_destination_address` varchar(128)  COMMENT 'ip协议字段，32位，目的IP地址',
+                              `ip_source_address` varchar(128)  COMMENT 'ip协议字段，32位，源IP地址',
+                              `seq` varchar(20) COMMENT 'tcp协议字段，32位，序列号',
+                              `ack` varchar(20) COMMENT 'tcp协议字段，32位，确认号',
+                              `sum` varchar(20) COMMENT 'tcp协议字段，16位，校验和',
+                              `flag` varchar(20) COMMENT 'tcp协议字段，8位，前2位保留位，后6位分别是urg、ack、psh、rst、syn、fin',
+                              `offset` varchar(20) COMMENT 'tcp协议字段，8位，前4位头部长度，后2位保留位',
+                              `win` varchar(20) COMMENT 'tcp协议字段，16位，窗口大小',
+                              `urp` varchar(20) COMMENT 'tcp协议字段，16位，紧急指针',
+                              `destination_port` varchar(20) COMMENT 'tcp协议字段，16位，目的端口号',
+                              `source_port` varchar(20),PRIMARY KEY(`id`))COMMENT 'tcp协议字段，16位，源端口号' """
             #print(sql)
             cursor.execute(sql)
             db.commit()
