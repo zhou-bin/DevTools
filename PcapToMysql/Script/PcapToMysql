@@ -17,6 +17,7 @@ import binascii
 
 
 #  常用的协议编号，更详细请参考：https://wenku.baidu.com/view/0d1dc10d4a7302768e9939ef.html
+
 tcp_or_udp = {}
 tcp_or_udp[6] = 'tcp'
 tcp_or_udp[17] = 'udp'
@@ -49,7 +50,7 @@ def parseFunction(filepath,tableName,uuid):
     head = fpcap.read(24)
     #print(hex(int.from_bytes(head[0: 4], byteorder='big', signed=False)))
     #print(int.from_bytes(head[4: 8], byteorder='big', signed=False))
-    print(head)
+    #print(head)
     #return
     # 数据包头可以有多个，每个数据包头后面都跟着真正的数据包。以下是数据包头的4个字段含义，共16字节
     # Timestamp(4B)：时间戳高位，精确到seconds，这是Unix时间戳。捕获数据包的时间一般是根据这个值
@@ -62,8 +63,9 @@ def parseFunction(filepath,tableName,uuid):
     sql = "INSERT INTO`" + tableName + "`(`create_time`,`uuid`,`high_time_stamp`,`low_time_stamp`,`caplen`,`mac_dst`,`mac_src`," \
           + "`ip_version_headlen`,`ip_tos_ecn`,`ip_total_len`,`ip_id`,`ip_off`,`ip_ttl`,`ip_pro`,`ip_sum`," \
           + "`ip_destination_address`,`ip_source_address`" \
-          +",`destination_port`,`source_port`,`seq`,`ack`,`sum`,`flag`,`offset`,`win`,`urp`)" \
-          + "value(now(),"+str(uuid)+",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+          +",`destination_port`,`source_port`,`seq`,`ack`,`sum`,`flag`,`offset`,`win`,`urp`,`tcp_opts`,"\
+           +"`udp_len`,`udp_checksum`,`udp_data`)" \
+          + "value(now(),"+str(uuid)+",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
     res=[]   # 用于后续插入数据库的数据
     num_sql=0
 
@@ -91,7 +93,6 @@ def parseFunction(filepath,tableName,uuid):
         string_data = fpcap.read(packet_len) # 根据数据包长度读取
 
         if len(string_data)!=packet_len: # 如果读取的数据长度<数据区长度，则结束循环。
-
             break
 
         ether = dpkt.ethernet.Ethernet(string_data)# 数据部分以太帧读取，即数据链路层
@@ -124,6 +125,10 @@ def parseFunction(filepath,tableName,uuid):
             col.append("")
             col.append(socket.inet_ntoa(arp.tpa))  # arp.tpa   目的ip地址
             col.append(socket.inet_ntoa(arp.spa))  # arp.spa   源ip地址
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
             col.append("")
             col.append("")
             col.append("")
@@ -171,6 +176,10 @@ def parseFunction(filepath,tableName,uuid):
                 col.append("")
                 col.append("")
                 col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
             elif isinstance(data, dpkt.tcp.TCP):# 传输层为tcp 或者 udp 协议
 
                 col.append(str(data.dport)) # 目的端口号
@@ -183,6 +192,10 @@ def parseFunction(filepath,tableName,uuid):
                 col.append(str(data._off))  # 偏移量
                 col.append(str(data.win))  # 窗口大小
                 col.append(str(data.urp))  # 紧急指针
+                col.append(str(binascii.hexlify(data.opts))[2:-1]) # opts
+                col.append("")
+                col.append("")
+                col.append("")
             elif isinstance(data, dpkt.udp.UDP):
                 col.append(str(data.dport))  # 目的端口号
                 col.append(str(data.sport)) # 源端口号
@@ -193,7 +206,17 @@ def parseFunction(filepath,tableName,uuid):
                 col.append("")
                 col.append("")
                 col.append("")
+                col.append("")
+                col.append(data.ulen)
+                col.append(data.sum)
+                col.append(str(binascii.hexlify(data.data))[2:-1])
+
+
             else:   # 方便统计包数，如果其他传输层协议的也保存
+                col.append("")
+                col.append("")
+                col.append("")
+                col.append("")
                 col.append("")
                 col.append("")
                 col.append("")
@@ -224,6 +247,10 @@ def parseFunction(filepath,tableName,uuid):
             col.append("")
             col.append("")
             col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
+            col.append("")
 
         packet_num += 1; # 包数+1
         if packet_num%10000==0:  # 每插入10000条数据，输出一次
@@ -241,6 +268,7 @@ def parseFunction(filepath,tableName,uuid):
 
     print("总共包数：" + str(packet_num))
     if num_sql!=0: # num_sql！=0说明还要每插入的数据，最好一次性插入
+
         cursor.executemany(sql, res)
         db.commit()
         res.clear()
@@ -248,7 +276,7 @@ def parseFunction(filepath,tableName,uuid):
 
 
 if __name__ == '__main__':
-    dirPath = 'D:\\test\\' # 文件路径地址
+    dirPath = 'D:\\test\\test\\' # 文件路径地址
     database = "ot"   # 保存的数据库名称
     uuid=123
     # 打开数据库连接
@@ -290,6 +318,10 @@ if __name__ == '__main__':
                               `offset` varchar(20) COMMENT 'tcp协议字段，8位，前4位头部长度，后2位保留位',
                               `win` varchar(20) COMMENT 'tcp协议字段，16位，窗口大小',
                               `urp` varchar(20) COMMENT 'tcp协议字段，16位，紧急指针',
+                              `tcp_opts` text COMMENT 'tcp协议字段，opts,不固定长度',
+                              `udp_len` varchar(20) COMMENT 'udp协议字段，16位，长度',
+                              `udp_checksum` varchar(20) COMMENT 'udp协议字段，16位，校验和',
+                              `udp_data` text COMMENT 'udp协议字段，应用层data,不固定长度',
                               `destination_port` varchar(20) COMMENT 'tcp协议字段，16位，目的端口号',
                               `source_port` varchar(20),PRIMARY KEY(`id`))COMMENT 'tcp协议字段，16位，源端口号' """
             #print(sql)
