@@ -12,7 +12,7 @@ def ip_sum(strs):
     sum+=int(strs[5])*256 #69,ip_version_headlen 8位
     sum += int(strs[6])  # ip_tos_ecn   8位
 
-    sum += 40  # ip_total_len  16位
+    sum += int(strs[7])  # ip_total_len  16位
     sum += int(strs[8]) # ip_id 16位
     sum += int(strs[9])  # ip_off 16位
 
@@ -49,7 +49,7 @@ def tcp_sum(strs):
     sum += int(ip_source_address[6:10], 16)  # ip_source_address
 
     sum += int(strs[11])  # ip_pro 8位，前8位用0填充了
-    sum += 20  # tcp长度
+    sum += int(strs[7])-20  # tcp长度=ip长度-ip头部长度
     # 计算12字节tcp的伪头部完成
 
     # 计算tcp头部
@@ -68,6 +68,12 @@ def tcp_sum(strs):
 
     sum += int(strs[20])  # win 16位
     sum += int(strs[21])  # urp 16位
+
+    opts=strs[24]
+    for i in range(0, len(opts), 4):
+        sum += int(opts[i:i + 4], 16)
+
+
     # 计算tcp头部完成
 
     new_sum = int(sum % 65536) + int(sum / 65536)  # 将高于16位的数加到低位上
@@ -82,14 +88,14 @@ def tcp_sum(strs):
 #  主函数
 #======================================================================
 pcap_head="d4c3b2a10200040000000000000000000000040001000000"
-file = open("D:\\test\\test123.pcap", "wb")
+file = open("D:\\test\\test\\123(生成版).pcap", "wb")
 db = pymysql.connect(host="localhost", user="root", password="123456", database="ot", charset='utf8')
 table_name='123'
 cursor = db.cursor()
 sql="SELECT `high_time_stamp`,`low_time_stamp`,`caplen`,`mac_dst`,`mac_src`,`ip_version_headlen`,`ip_tos_ecn` ,"\
     +"`ip_total_len`,`ip_id`,`ip_off`,`ip_ttl`,`ip_pro`,`ip_sum`,`ip_destination_address`,"\
     +"`ip_source_address`,`seq`,`ack`,`sum`,`flag`,`offset`,`win`,"\
-    +"`urp`,`destination_port`,`source_port`"\
+    +"`urp`,`destination_port`,`source_port`,`tcp_opts`"\
     +"FROM `"+table_name+"` WHERE ip_pro = '6' "
 cursor.execute(sql)
 result = cursor.fetchall()
@@ -107,8 +113,10 @@ for i in result :
         low_time_stamp = "0" + low_time_stamp
     file.write(bytes.fromhex(low_time_stamp))
 
-    # 长度
-    caplen = "36000000" #16进制，10进制位54
+    # 长度 caplen = 默认为"36000000" 16进制，10进制位54
+    caplen = str(format(54 + int(len(i[24]) / 2),'x'))
+    while len(caplen) < 8:
+        caplen =caplen+"0"
     file.write(bytes.fromhex(caplen))
     file.write(bytes.fromhex(caplen))
 
@@ -127,8 +135,10 @@ for i in result :
         ip_tos_ecn="0"+ip_tos_ecn
     file.write(bytes.fromhex(ip_tos_ecn))
 
-    #ip_total_len 0028
-    ip_total_len="0028"
+    #ip_total_len
+    ip_total_len=format(int(i[7]), 'x')
+    while len(ip_total_len) <4 :
+        ip_total_len="0"+ip_total_len
     file.write(bytes.fromhex(ip_total_len))
 
     #ip_id
@@ -159,7 +169,6 @@ for i in result :
     ip_sum_num = ip_sum(i)
     while len(ip_sum_num) < 4:
         ip_sum_num = "0" + ip_sum_num
-    print(ip_sum_num)
     file.write(bytes.fromhex(ip_sum_num))
 
     # src_ip_address
@@ -192,8 +201,10 @@ for i in result :
         ack = "0" + ack
     file.write(bytes.fromhex(ack))
 
-    # offset 50  前四位为头部长度5（*4=20）
-    offset = "50"
+    # offset  前四位为头部长度（*4=20）
+    offset = format(int(i[19]), 'x')
+    while len(offset) < 2:
+        offset = "0" + offset
     file.write(bytes.fromhex(offset))
 
     # flag
@@ -219,9 +230,13 @@ for i in result :
         urp = "0" + urp
     file.write(bytes.fromhex(urp))
 
+    # opts
+    opts = i[24]
+    file.write(bytes.fromhex(opts))
 
 db.commit()
 db.close()
+print("success")
 
 
 
